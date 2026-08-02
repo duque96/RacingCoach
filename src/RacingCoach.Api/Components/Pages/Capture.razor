@@ -1,0 +1,285 @@
+@page "/capture"
+@using RacingCoach.Domain.Interfaces
+@using RacingCoach.Domain.Services
+@using RacingCoach.Api.Services
+@inject ITelemetryDataRepository TelemetryDataRepository
+@inject ISessionRepository SessionRepository
+@inject TelemetrySessionManager SessionManager
+@inject TelemetryService TelemetryService
+@inject TelemetryHistoryService HistoryService
+@inject NavigationManager Navigation
+@implements IDisposable
+@rendermode InteractiveServer
+
+<PageTitle>Capture</PageTitle>
+
+<h1>Telemetry Dashboard</h1>
+
+@if (SessionManager.ActiveSession == null)
+{
+    <div class="alert alert-warning">
+        <h4>No Active Session</h4>
+        <p>Start a session to begin capturing telemetry data.</p>
+        <a href="/session" class="btn btn-primary">Start Session</a>
+    </div>
+}
+else
+{
+    <div class="alert alert-info d-flex justify-content-between align-items-center">
+        <div>
+            <strong>Active Session:</strong> @SessionManager.ActiveSession.GameName
+            <br />
+            <small>Started: @SessionManager.ActiveSession.StartTime.ToString("g")</small>
+        </div>
+        <button class="btn btn-danger" @onclick="StopSession">Stop Session</button>
+    </div>
+
+    @if (TelemetryService.LastTelemetry != null)
+    {
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card text-center border-primary">
+                    <div class="card-body">
+                        <h5 class="card-title text-muted">Speed</h5>
+                        <p class="display-4 text-primary">@TelemetryService.LastTelemetry.Speed.ToString("F0")</p>
+                        <small class="text-muted">km/h</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center border-success">
+                    <div class="card-body">
+                        <h5 class="card-title text-muted">RPM</h5>
+                        <p class="display-4 text-success">@TelemetryService.LastTelemetry.RPM.ToString("F0")</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center border-warning">
+                    <div class="card-body">
+                        <h5 class="card-title text-muted">Gear</h5>
+                        <p class="display-4 text-warning">@TelemetryService.LastTelemetry.Gear</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center border-info">
+                    <div class="card-body">
+                        <h5 class="card-title text-muted">Lap</h5>
+                        <p class="display-4 text-info">@TelemetryService.LastTelemetry.CurrentLap / @TelemetryService.LastTelemetry.TotalLaps</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Throttle</h5>
+                    </div>
+                    <div class="card-body">
+                        @{ var throttlePct = TelemetryService.LastTelemetry.Throttle.ToString("F1", System.Globalization.CultureInfo.InvariantCulture); }
+                        <div class="progress" style="height: 40px;">
+                            <div class="progress-bar bg-success" role="progressbar" 
+                                 style="width: @(throttlePct)%"
+                                 aria-valuenow="@throttlePct" 
+                                 aria-valuemin="0" aria-valuemax="100">
+                                @throttlePct%
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Brake</h5>
+                    </div>
+                    <div class="card-body">
+                        @{ var brakePct = TelemetryService.LastTelemetry.Brake.ToString("F1", System.Globalization.CultureInfo.InvariantCulture); }
+                        <div class="progress" style="height: 40px;">
+                            <div class="progress-bar bg-danger" role="progressbar" 
+                                 style="width: @(brakePct)%"
+                                 aria-valuenow="@brakePct" 
+                                 aria-valuemin="0" aria-valuemax="100">
+                                @brakePct%
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Telemetry Chart</h5>
+                        <button class="btn btn-sm @(isPaused ? "btn-success" : "btn-warning")" @onclick="TogglePause">
+                            @(isPaused ? "▶ Resume" : "⏸ Pause")
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="telemetryChart" style="width: 100%; height: 400px;"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-info">
+            <h4>Waiting for telemetry data...</h4>
+            <p>Make sure the game is running and sending telemetry data.</p>
+        </div>
+    }
+
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Session Info</h5>
+            <button class="btn btn-sm btn-outline-primary" @onclick="RefreshAsync">
+                Refresh
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4">
+                    <strong>Total Packets:</strong> @totalPackets
+                </div>
+                <div class="col-md-4">
+                    <strong>Session ID:</strong> @SessionManager.ActiveSession.Id.ToString().Substring(0, 8)...
+                </div>
+                <div class="col-md-4">
+                    <strong>Status:</strong> 
+                    <span class="badge bg-success">Listening</span>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private int totalPackets;
+    private CancellationTokenSource? cts;
+    private IJSObjectReference? _jsModule;
+    private bool _chartInitialized;
+    private bool isPaused = false;
+
+    [Inject]
+    private IJSRuntime JSRuntime { get; set; } = default!;
+
+    private void TogglePause()
+    {
+        isPaused = !isPaused;
+    }
+
+    private async Task StopSession()
+    {
+        var result = await SessionManager.StopSessionAsync();
+        if (result.IsSuccess)
+        {
+            Navigation.NavigateTo("/session");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            cts = new CancellationTokenSource();
+            _ = UpdateLoopAsync(cts.Token);
+        }
+
+        if (TelemetryService.LastTelemetry != null && !_chartInitialized)
+        {
+            await InitializeChartAsync();
+        }
+    }
+
+    private async Task InitializeChartAsync()
+    {
+        if (_chartInitialized) return;
+
+        _jsModule = await JSRuntime.InvokeAsync<IJSObjectReference>(
+            "import", "./Components/Pages/Capture.razor.js");
+
+        try
+        {
+            await _jsModule.InvokeVoidAsync("destroyChart");
+        }
+        catch
+        {
+        }
+
+        await _jsModule.InvokeVoidAsync("initializeChart");
+        _chartInitialized = true;
+    }
+
+    private async Task UpdateLoopAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await LoadDataAsync();
+                await InvokeAsync(StateHasChanged);
+
+                if (_chartInitialized && _jsModule != null && !isPaused)
+                {
+                    var history = HistoryService.History;
+                    var labels = history.Select(h => h.Timestamp.ToString("HH:mm:ss.fff")).ToArray();
+                    var speedData = history.Select(h => h.Speed).ToArray();
+                    var throttleData = history.Select(h => h.Throttle).ToArray();
+                    var brakeData = history.Select(h => h.Brake).ToArray();
+
+                    await _jsModule.InvokeVoidAsync("updateChartData", labels, speedData, throttleData, brakeData);
+                }
+
+                await Task.Delay(100, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in update loop: {ex.Message}");
+                await Task.Delay(1000, cancellationToken);
+            }
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        await TelemetryService.UpdateAsync();
+        await HistoryService.UpdateAsync();
+
+        var countResult = await TelemetryDataRepository.GetCountAsync();
+        if (countResult.IsSuccess)
+            totalPackets = countResult.Value;
+    }
+
+    private async Task RefreshAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    public async void Dispose()
+    {
+        cts?.Cancel();
+        cts?.Dispose();
+
+        if (_jsModule != null)
+        {
+            try
+            {
+                await _jsModule.InvokeVoidAsync("destroyChart");
+                await _jsModule.DisposeAsync();
+            }
+            catch
+            {
+            }
+        }
+    }
+}

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RacingCoach.Domain\RacingCoach.Domain.csproj" />
+    <ProjectReference Include="..\RacingCoach.Shared\RacingCoach.Shared.csproj" />
+    <ProjectReference Include="..\RacingCoach.Infrastructure\RacingCoach.Infrastructure.csproj" />
+    <ProjectReference Include="..\RacingCoach.Providers.GT7\RacingCoach.Providers.GT7.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" />
+    <PackageReference Include="System.Security.Cryptography.Xml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RacingCoach.Domain\RacingCoach.Domain.csproj" />
+    <ProjectReference Include="..\..\src\RacingCoach.Shared\RacingCoach.Shared.csproj" />
+    <ProjectReference Include="..\..\src\RacingCoach.Infrastructure\RacingCoach.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\RacingCoach.Api\RacingCoach.Api.csproj" />
+  </ItemGroup>
+
+</Project>

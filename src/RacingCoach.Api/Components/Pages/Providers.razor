@@ -1,0 +1,266 @@
+@page "/providers"
+@using RacingCoach.Domain.Interfaces
+@using RacingCoach.Domain.Models.Providers
+@inject IEnumerable<ITelemetryProvider> AvailableProviders
+@inject IProviderConfigurationRepository ConfigRepository
+@rendermode InteractiveServer
+
+<PageTitle>Providers</PageTitle>
+
+<h1>Telemetry Providers</h1>
+
+<div class="row">
+    @foreach (var provider in AvailableProviders)
+    {
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">@provider.Name</h5>
+                    <small class="text-muted">@provider.GameName</small>
+                </div>
+                <div class="card-body">
+                    <h6>Configurations</h6>
+                    @if (providerConfigurations.TryGetValue(provider.Id, out var configs) && configs.Any())
+                    {
+                        <ul class="list-group mb-3">
+                            @foreach (var config in configs)
+                            {
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>@config.Name</strong>
+                                        <br />
+                                        <small class="text-muted">
+                                            @foreach (var setting in config.Settings.Take(3))
+                                            {
+                                                <span>@setting.Key: @setting.Value</span>
+                                                @if (setting.Key != config.Settings.Last().Key)
+                                                {
+                                                    <span>, </span>
+                                                }
+                                            }
+                                            @if (config.Settings.Count > 3)
+                                            {
+                                                <span>...</span>
+                                            }
+                                        </small>
+                                    </div>
+                                    <div>
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => EditConfiguration(config)">Edit</button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteConfiguration(config.Id)">Delete</button>
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <p class="text-muted">No configurations yet.</p>
+                    }
+                    
+                    <button class="btn btn-primary btn-sm" @onclick="() => CreateConfiguration(provider)">
+                        Add Configuration
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (showModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@modalTitle</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Configuration Name</label>
+                        <input type="text" class="form-control" @bind="configName" />
+                    </div>
+                    
+                    @if (selectedProvider != null)
+                    {
+                        @foreach (var field in selectedProvider.ConfigurationSchema.Fields)
+                        {
+                            <div class="mb-3">
+                                <label class="form-label">
+                                    @field.DisplayName
+                                    @if (field.Required)
+                                    {
+                                        <span class="text-danger">*</span>
+                                    }
+                                </label>
+                                @if (field.Description != null)
+                                {
+                                    <small class="form-text text-muted d-block mb-1">@field.Description</small>
+                                }
+                                
+                                @if (field.Type == "bool")
+                                {
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" 
+                                               checked="@GetBoolSetting(field.Name)"
+                                               @onchange="e => SetBoolSetting(field.Name, (bool)e.Value!)" />
+                                    </div>
+                                }
+                                else if (field.Type == "int")
+                                {
+                                    <input type="number" class="form-control" 
+                                           value="@GetIntSetting(field.Name)"
+                                           @onchange="@(e => SetIntSetting(field.Name, e.Value?.ToString() ?? "0"))" />
+                                }
+                                else
+                                {
+                                    <input type="text" class="form-control" 
+                                           value="@GetSetting(field.Name)"
+                                           @onchange="@(e => SetSetting(field.Name, e.Value?.ToString() ?? ""))" />
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="SaveConfiguration">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private Dictionary<string, List<ProviderConfiguration>> providerConfigurations = new();
+    private bool showModal;
+    private string modalTitle = "";
+    private ITelemetryProvider? selectedProvider;
+    private string configName = "";
+    private Dictionary<string, string> configSettings = new();
+    private Guid? editingConfigId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadConfigurationsAsync();
+    }
+
+    private async Task LoadConfigurationsAsync()
+    {
+        providerConfigurations.Clear();
+        foreach (var provider in AvailableProviders)
+        {
+            var result = await ConfigRepository.GetByProviderIdAsync(provider.Id);
+            if (result.IsSuccess)
+            {
+                providerConfigurations[provider.Id] = result.Value.ToList();
+            }
+        }
+    }
+
+    private void CreateConfiguration(ITelemetryProvider provider)
+    {
+        selectedProvider = provider;
+        modalTitle = $"New Configuration for {provider.Name}";
+        configName = "";
+        configSettings = new Dictionary<string, string>();
+        
+        foreach (var field in provider.ConfigurationSchema.Fields)
+        {
+            if (field.DefaultValue != null)
+            {
+                configSettings[field.Name] = field.DefaultValue;
+            }
+        }
+        
+        editingConfigId = null;
+        showModal = true;
+    }
+
+    private void EditConfiguration(ProviderConfiguration config)
+    {
+        selectedProvider = AvailableProviders.FirstOrDefault(p => p.Id == config.ProviderId);
+        if (selectedProvider == null) return;
+
+        modalTitle = $"Edit Configuration: {config.Name}";
+        configName = config.Name;
+        configSettings = new Dictionary<string, string>(config.Settings);
+        editingConfigId = config.Id;
+        showModal = true;
+    }
+
+    private async Task DeleteConfiguration(Guid configId)
+    {
+        var result = await ConfigRepository.DeleteAsync(configId);
+        if (result.IsSuccess)
+        {
+            await LoadConfigurationsAsync();
+        }
+    }
+
+    private async Task SaveConfiguration()
+    {
+        if (string.IsNullOrWhiteSpace(configName))
+        {
+            return;
+        }
+
+        if (editingConfigId.HasValue)
+        {
+            var getResult = await ConfigRepository.GetByIdAsync(editingConfigId.Value);
+            if (getResult.IsSuccess)
+            {
+                var config = getResult.Value;
+                config.Update(configName, configSettings);
+                await ConfigRepository.UpdateAsync(config);
+            }
+        }
+        else
+        {
+            var config = new ProviderConfiguration(selectedProvider!.Id, configName, configSettings);
+            await ConfigRepository.AddAsync(config);
+        }
+
+        await LoadConfigurationsAsync();
+        CloseModal();
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        selectedProvider = null;
+        configName = "";
+        configSettings.Clear();
+        editingConfigId = null;
+    }
+
+    private string GetSetting(string key)
+    {
+        return configSettings.TryGetValue(key, out var value) ? value : "";
+    }
+
+    private void SetSetting(string key, string value)
+    {
+        configSettings[key] = value;
+    }
+
+    private int GetIntSetting(string key)
+    {
+        return configSettings.TryGetValue(key, out var value) && int.TryParse(value, out var result) ? result : 0;
+    }
+
+    private void SetIntSetting(string key, string value)
+    {
+        configSettings[key] = value;
+    }
+
+    private bool GetBoolSetting(string key)
+    {
+        return configSettings.TryGetValue(key, out var value) && bool.TryParse(value, out var result) && result;
+    }
+
+    private void SetBoolSetting(string key, bool value)
+    {
+        configSettings[key] = value.ToString();
+    }
+}

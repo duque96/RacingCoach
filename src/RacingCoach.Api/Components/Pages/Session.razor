@@ -1,0 +1,149 @@
+@page "/session"
+@using RacingCoach.Domain.Interfaces
+@using RacingCoach.Domain.Models.Providers
+@using RacingCoach.Domain.Services
+@inject IEnumerable<ITelemetryProvider> Providers
+@inject IProviderConfigurationRepository ConfigRepository
+@inject TelemetrySessionManager SessionManager
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Session</PageTitle>
+
+<h1>Telemetry Session</h1>
+
+@if (SessionManager.ActiveSession != null)
+{
+    <div class="alert alert-success">
+        <h4>Active Session</h4>
+        <p>
+            <strong>Game:</strong> @SessionManager.ActiveSession.GameName<br />
+            <strong>Started:</strong> @SessionManager.ActiveSession.StartTime.ToString("g")<br />
+            <strong>Session ID:</strong> @SessionManager.ActiveSession.Id
+        </p>
+        <button class="btn btn-danger" @onclick="StopSession">Stop Session</button>
+        <a href="/capture" class="btn btn-primary">View Telemetry</a>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Start New Session</h5>
+        </div>
+        <div class="card-body">
+            @if (errorMessage != null)
+            {
+                <div class="alert alert-danger">@errorMessage</div>
+            }
+
+            <div class="mb-3">
+                <label class="form-label">Select Provider</label>
+                <select class="form-select" @bind="selectedProviderId" @bind:after="OnProviderChanged">
+                    <option value="">-- Select a Provider --</option>
+                    @foreach (var provider in Providers)
+                    {
+                        <option value="@provider.Id">@provider.Name (@provider.GameName)</option>
+                    }
+                </select>
+            </div>
+
+            @if (selectedProviderId != null && availableConfigurations.Any())
+            {
+                <div class="mb-3">
+                    <label class="form-label">Select Configuration</label>
+                    <select class="form-select" @bind="selectedConfigurationId">
+                        <option value="">-- Select a Configuration --</option>
+                        @foreach (var config in availableConfigurations)
+                        {
+                            <option value="@config.Id">@config.Name</option>
+                        }
+                    </select>
+                </div>
+            }
+            else if (selectedProviderId != null)
+            {
+                <div class="alert alert-warning">
+                    No configurations available for this provider. 
+                    <a href="/providers">Create a configuration</a> first.
+                </div>
+            }
+
+            <button class="btn btn-primary" 
+                    disabled="@(string.IsNullOrEmpty(selectedProviderId) || selectedConfigurationId == Guid.Empty)"
+                    @onclick="StartSession">
+                Start Session
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private string? selectedProviderId;
+    private Guid selectedConfigurationId;
+    private List<ProviderConfiguration> availableConfigurations = new();
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadConfigurationsAsync();
+    }
+
+    private async Task OnProviderChanged()
+    {
+        selectedConfigurationId = Guid.Empty;
+        await LoadConfigurationsAsync();
+    }
+
+    private async Task LoadConfigurationsAsync()
+    {
+        if (string.IsNullOrEmpty(selectedProviderId))
+        {
+            availableConfigurations.Clear();
+            return;
+        }
+
+        var result = await ConfigRepository.GetByProviderIdAsync(selectedProviderId);
+        if (result.IsSuccess)
+        {
+            availableConfigurations = result.Value.ToList();
+        }
+    }
+
+    private async Task StartSession()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrEmpty(selectedProviderId))
+        {
+            errorMessage = "Please select a provider.";
+            return;
+        }
+
+        if (selectedConfigurationId == Guid.Empty)
+        {
+            errorMessage = "Please select a configuration.";
+            return;
+        }
+
+        var result = await SessionManager.StartSessionAsync(selectedProviderId, selectedConfigurationId);
+        
+        if (result.IsSuccess)
+        {
+            Navigation.NavigateTo("/capture");
+        }
+        else
+        {
+            errorMessage = result.Error.Message;
+        }
+    }
+
+    private async Task StopSession()
+    {
+        var result = await SessionManager.StopSessionAsync();
+        if (!result.IsSuccess)
+        {
+            errorMessage = result.Error.Message;
+        }
+    }
+}

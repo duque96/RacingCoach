@@ -1,0 +1,62 @@
+﻿@page "/"
+@using RacingCoach.Domain.Services
+@inject TelemetrySessionManager SessionManager
+
+<PageTitle>Racing Coach</PageTitle>
+
+<h1>Racing Coach</h1>
+
+<p>Platform for telemetry analysis and coaching for racing games.</p>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Session Management</h5>
+                <p class="card-text">Start and stop telemetry sessions for different racing games.</p>
+                @if (SessionManager.ActiveSession != null)
+                {
+                    <div class="alert alert-success">
+                        <strong>Active Session:</strong> @SessionManager.ActiveSession.GameName
+                        <br />
+                        <small>Started: @SessionManager.ActiveSession.StartTime.ToString("g")</small>
+                    </div>
+                    <a href="capture" class="btn btn-primary">View Telemetry</a>
+                    <a href="session" class="btn btn-outline-secondary">Manage Session</a>
+                }
+                else
+                {
+                    <a href="session" class="btn btn-primary">Start Session</a>
+                }
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Providers</h5>
+                <p class="card-text">Configure telemetry providers for different games.</p>
+                <a href="providers" class="btn btn-primary">Manage Providers</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="mt-4">
+    <h4>Status</h4>
+    <ul>
+        <li>
+            Session: 
+            @if (SessionManager.ActiveSession != null)
+            {
+                <span class="badge bg-success">Active</span>
+            }
+            else
+            {
+                <span class="badge bg-secondary">Inactive</span>
+            }
+        </li>
+        <li>Database: <span class="badge bg-success">Connected</span> (SQLite)</li>
+    </ul>
+</div>
